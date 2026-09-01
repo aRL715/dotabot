@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiohttp import web
 
-TOKEN = "8613726826:AAHfoAUUFJV7P-KqxqOu3e3KPgq84pYCrYM"
+TOKEN = "8613726826:AAEZJ0-OknC6NQHyV3O6F2l8yT68l13FEww"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
