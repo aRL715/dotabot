@@ -1,6 +1,5 @@
 import logging
 import asyncio
-import aiohttp
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiohttp import web
@@ -10,27 +9,56 @@ TOKEN = "8613726826:AAEZJ0-OknC6NQHyV3O6F2l8yT68l13FEww"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Наш бронебойный словарь: переводит и сленг, и английские названия популярных кнопок сразу в ID и официальные имена!
-HEROES_STATIC_DB = {
-    "invoker": (74, "Invoker"), "инвокер": (74, "Invoker"), "вокер": (74, "Invoker"),
-    "shadow_fiend": (11, "Shadow Fiend"), "сф": (11, "Shadow Fiend"), "невермор": (11, "Shadow Fiend"),
-    "pudge": (14, "Pudge"), "пудж": (14, "Pudge"), "мясник": (14, "Pudge"),
-    "anti_mage": (1, "Anti-Mage"), "антимаг": (1, "Anti-Mage"), "ам": (1, "Anti-Mage"),
-    "juggernaut": (8, "Juggernaut"), "джаггер": (8, "Juggernaut"), "джаггернаут": (8, "Juggernaut"),
-    "ursa": (70, "Ursa"), "урса": (70, "Ursa"), "мишка": (70, "Ursa"),
-    "axe": (2, "Axe"), "акс": (2, "Axe"),
-    "bristleback": (99, "Bristleback"), "брист": (99, "Bristleback"), "бристлбэк": (99, "Bristleback"), "ёж": (99, "Bristleback"),
-    "lion": (26, "Lion"), "лион": (26, "Lion"),
-    "rubick": (86, "Rubick"), "рубик": (86, "Rubick"),
-    "kez": (145, "Kez"), "кеез": (145, "Kez"),
-    "muerta": (138, "Muerta"), "муэрта": (138, "Muerta"),
-    "marci": (136, "Marci"), "марси": (136, "Marci"),
-    "primal_beast": (137, "Primal Beast"), "праймал": (137, "Primal Beast"), "динозавр": (137, "Primal Beast"),
-    "wraith_king": (42, "Wraith King"), "вк": (42, "Wraith King"), "папич": (42, "Wraith King"), "леорик": (42, "Wraith King"),
-    "drow_ranger": (6, "Drow Ranger"), "тракса": (6, "Drow Ranger"), "дроу": (6, "Drow Ranger"),
-    "sniper": (35, "Sniper"), "снайпер": (35, "Sniper"), "дед": (35, "Sniper"),
-    "slark": (93, "Slark"), "сларк": (93, "Slark"), "рыба": (93, "Slark"),
-    "spirit_breaker": (71, "Spirit Breaker"), "бара": (71, "Spirit Breaker"), "баратрум": (71, "Spirit Breaker")
+# Огромная автономная база лучших контрпиков (Вся Дота в памяти бота!)
+COUNTERS_DB = {
+    # МИДЕРЫ
+    "invoker": ("Invoker", ["Nyx Assassin (Выжигает ману)", "Pugna (Вард на прокаст)", "Templar Assassin", "Broodmother"]),
+    "shadow_fiend": ("Shadow Fiend", ["Templar Assassin (Щит от урона)", "Clockwerk (Коги в лицо)", "Storm Spirit", "Zeus"]),
+    "pudge": ("Pudge", ["Slardar (Минус броня)", "Ursa (Набивает пассивку)", "Lifestealer (Процентный урон)", "Timbersaw"]),
+    "tinker": ("Tinker", ["Clockwerk (Шок мешает лазеру)", "Storm Spirit", "Spectre", "Anti-Mage"]),
+    "storm_spirit": ("Storm Spirit", ["Anti-Mage", "Silencer (Глобал сайленс)", "Skywrath Mage", "Doom"]),
+    "lina": ("Lina", ["Anti-Mage", "Templar Assassin", "Pugna", "Nyx Assassin"]),
+    "zeus": ("Zeus", ["Anti-Mage (Маг. щит)", "Templar Assassin", "Storm Spirit", "Huskar"]),
+    "meepo": ("Meepo", ["Axe (Агр на всех клонов)", "Sven (Сплэш)", "Earthshaker (Эхослэм)", "Lich"]),
+
+    # КЕРРИ
+    "anti_mage": ("Anti-Mage", ["Phantom Assassin", "Slardar", "Meepo (Сетка ловит блинк)", "Legion Commander", "Axe"]),
+    "juggernaut": ("Juggernaut", ["Axe (Агрит сквозь крутилку)", "Slardar", "Windranger", "Outworld Destroyer"]),
+    "ursa": ("Ursa", ["Windranger (Убегает)", "Venomancer (Замедляет)", "Shadow Shaman (Контроль)", "Razor"]),
+    "kez": ("Kez", ["Axe (Агрит во время комбо)", "Legion Commander (Дуэль)", "Bloodseeker (Раптура)"]),
+    "muerta": ("Muerta", ["Phantom Assassin", "Anti-Mage (Маг. защита)", "Juggernaut (Спин сейвит)"]),
+    "phantom_assassin": ("Phantom Assassin", ["Axe (Контрит промахи)", "Timbersaw", "Tinker", "Razor (Ворует урон)"]),
+    "drow_ranger": ("Drow Ranger", ["Phantom Assassin (Прыжок в лицо)", "Axe", "Clockwerk", "Mars (Арена)"]),
+    "wraith_king": ("Wraith King", ["Anti-Mage (Сжигает ману)", "Diffusal Blade (Предмет)", "Lion", "Invoker"]),
+    "sniper": ("Sniper", ["Storm Spirit (Прыгает через карту)", "Clockwerk", "Spectre", "Spirit Breaker"]),
+    "slark": ("Slark", ["Axe", "Legion Commander", "Bloodseeker (Видит лоу ХП)", "Faceless Void"]),
+
+    # ХАРДЛАЙНЕРЫ
+    "axe": ("Axe", ["Viper", "Venomancer", "Necrophos (Ульт в ХП)", "Outworld Destroyer"]),
+    "bristleback": ("Bristleback", ["Viper (Выключает спину сломанным пассивом)", "Slark", "Necrophos", "Timbersaw"]),
+    "primal_beast": ("Primal Beast", ["Lifestealer", "Slark (Ворует статы)", "Viper", "Bloodseeker"]),
+    "slardar": ("Slardar", ["Naga Siren (Иллюзии)", "Phantom Lancer", "Razor", "Underlord"]),
+    "timbersaw": ("Timbersaw", ["Viper", "Outworld Destroyer", "Silencer", "Doom"]),
+    "legion_commander": ("Legion Commander", ["Linken's Sphere (Предмет)", "Winter Wyvern", "Outworld Destroyer", "Shadow Demon"]),
+
+    # САППОРТЫ
+    "lion": ("Lion", ["Rubick", "Silencer", "Lifestealer", "Anti-Mage"]),
+    "rubick": ("Rubick", ["Silencer", "Skywrath Mage", "Clinkz", "Riki"]),
+    "spirit_breaker": ("Spirit Breaker", ["Underlord", "Clockwerk (Коги стопят разбег)", "Disruptor", "Enigma"]),
+    "crystal_maiden": ("Crystal Maiden", ["Silencer", "Clockwerk", "Earthshaker", "Juggernaut"]),
+    "witch_doctor": ("Witch Doctor", ["Silencer", "Rubick (Ворует вард)", "Riki", "Bounty Hunter"]),
+    "dazzle": ("Dazzle", ["Axe (Топор убивает сквозь крест!)", "Ancient Apparition", "Doom"])
+}
+
+# Поддержка ручного ввода на русском языке
+RUS_TO_ENG = {
+    "пудж": "pudge", "мясник": "pudge", "инвокер": "invoker", "вокер": "invoker", "сф": "shadow_fiend", "невермор": "shadow_fiend",
+    "антимаг": "anti_mage", "ам": "anti_mage", "джаггер": "juggernaut", "джаггернаут": "juggernaut", "урса": "ursa", "мишка": "ursa",
+    "кеез": "kez", "муэрта": "muerta", "акс": "axe", "брист": "bristleback", "бристлбэк": "bristleback", "ёж": "bristleback",
+    "праймал": "primal_beast", "лион": "lion", "рубик": "rubick", "бара": "spirit_breaker", "баратрум": "spirit_breaker",
+    "тинкер": "tinker", "шторм": "storm_spirit", "лина": "lina", "зевс": "zeus", "мипо": "meepo", "фантомка": "phantom_assassin",
+    "тракса": "drow_ranger", "вк": "wraith_king", "папич": "wraith_king", "снайпер": "sniper", "сларк": "slark", "слардар": "slardar",
+    "тимбер": "timbersaw", "легионка": "legion_commander", "цм": "crystal_maiden", "цмка": "crystal_maiden", "вд": "witch_doctor", "дазл": "dazzle"
 }
 
 def get_main_menu():
@@ -46,109 +74,77 @@ def get_main_menu():
     ])
 
 QUICK_HEROES = {
-    "mid": [("Invoker", "invoker"), ("Shadow Fiend", "shadow_fiend"), ("Pudge", "pudge")],
-    "carry": [("Anti-Mage", "anti_mage"), ("Juggernaut", "juggernaut"), ("Ursa", "ursa"), ("Kez (Кеез)", "kez")],
-    "off": [("Axe", "axe"), ("Bristleback", "bristleback"), ("Primal Beast", "primal_beast")],
-    "supp": [("Lion", "lion"), ("Rubick", "rubick"), ("Spirit Breaker (Бара)", "spirit_breaker")]
+    "mid": [("Invoker", "invoker"), ("Shadow Fiend", "shadow_fiend"), ("Pudge", "pudge"), ("Tinker", "tinker"), ("Storm Spirit", "storm_spirit"), ("Lina", "lina"), ("Zeus", "zeus"), ("Meepo", "meepo")],
+    "carry": [("Anti-Mage", "anti_mage"), ("Juggernaut", "juggernaut"), ("Ursa", "ursa"), ("Kez (Кеез)", "kez"), ("Muerta", "muerta"), ("Phantom Assassin", "phantom_assassin"), ("Drow Ranger", "drow_ranger"), ("Wraith King", "wraith_king"), ("Sniper", "sniper"), ("Slark", "slark")],
+    "off": [("Axe", "axe"), ("Bristleback", "bristleback"), ("Primal Beast", "primal_beast"), ("Slardar", "slardar"), ("Timbersaw", "timbersaw"), ("Legion Commander", "legion_commander")],
+    "supp": [("Lion", "lion"), ("Rubick", "rubick"), ("Spirit Breaker", "spirit_breaker"), ("Crystal Maiden", "crystal_maiden"), ("Witch Doctor", "witch_doctor"), ("Dazzle", "dazzle")]
 }
 
 def get_heroes_keyboard(role_key: str):
     buttons = []
+    row = []
     for text_name, search_key in QUICK_HEROES[role_key]:
-        buttons.append([InlineKeyboardButton(text=text_name, callback_data=f"hero_{search_key}")])
+        row.append(InlineKeyboardButton(text=text_name, callback_data=f"hero_{search_key}"))
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
     buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-async def get_auto_counters(message_or_call, user_input_str: str):
-    search_name = user_input_str.strip().lower().replace(" ", "_").replace("-", "")
+async def process_counter_search(message_or_call, hero_key: str):
+    hero_key = hero_key.strip().lower().replace(" ", "_")
     
-    # Сразу ищем героя и его ID в нашей статической базе
-    if search_name in HEROES_STATIC_DB:
-        target_id, official_name = HEROES_STATIC_DB[search_name]
+    if hero_key in RUS_TO_ENG:
+        hero_key = RUS_TO_ENG[hero_key]
+
+    if hero_key in COUNTERS_DB:
+        official_name, counters = COUNTERS_DB[hero_key]
+        response = f"⚔️ **Лучшие контрпики против {official_name}:**\n\n"
+        for i, counter in enumerate(counters, 1):
+            response += f"{i}. **{counter}**\n"
+        response += f"\n_Выбери роль или введи нового героя с клавиатуры:_"
+        
+        if isinstance(message_or_call, Message):
+            await message_or_call.answer(response, parse_mode="Markdown", reply_markup=get_main_menu())
+        else:
+            await message_or_call.message.edit_text(response, parse_mode="Markdown", reply_markup=get_main_menu())
     else:
-        # Если юзер ввел редкого героя, которого нет в списке популярных — выводим ошибку, бот не зависнет!
-        text = "❌ Герой не найден.\nВведи имя популярного персонажа на русском или английском (например: *Марси, Кеез, Сф, Пудж, Тракса, Бара*):"
+        text = "❌ Герой не найден в базе.\nПопробуй выбрать кнопками ролей или введи популярного (например: *Пудж, СФ, Кеез, Акс, Бара, ЦМка*):"
         if isinstance(message_or_call, Message):
             await message_or_call.answer(text, parse_mode="Markdown", reply_markup=get_main_menu())
         else:
-            await message_or_call.message.answer(text, parse_mode="Markdown", reply_markup=get_main_menu())
-        return
-
-    # Отправляем сообщение о начале живого поиска
-    if isinstance(message_or_call, Message):
-        status_msg = await message_or_call.answer(f"⚡ Живой авто-запрос к базе данных против **{official_name}**...")
-    else:
-        status_msg = await message_or_call.message.answer(f"⚡ Живой авто-запрос к базе данных против **{official_name}**...")
-        await message_or_call.answer()
-
-    async with aiohttp.ClientSession() as session:
-        try:
-            # 1. Скачиваем официальные имена всех героев для красивого вывода результатов
-            heroes_url = "https://githubusercontent.com"
-            async with session.get(heroes_url) as response:
-                if response.status == 200:
-                    heroes_data = await response.json()
-                    id_to_name = {int(k): v['localized_name'] for k, v in heroes_data.items()}
-                else:
-                    id_to_name = {}
-
-            # 2. Скачиваем живую матрицу контрпиков (это зеркало Render видит без блокировок!)
-            matchups_url = f"https://opendota.com{target_id}/matchups"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            
-            async with session.get(matchups_url, headers=headers) as match_response:
-                if match_response.status == 200:
-                    matchups = await match_response.json()
-                    valid_matchups = []
-                    for m in matchups:
-                        if m['games_played'] > 10:
-                            winrate = (m['wins'] / m['games_played']) * 100
-                            valid_matchups.append({'id': int(m['hero_id']), 'winrate': winrate})
-                    
-                    valid_matchups.sort(key=lambda x: x['winrate'], reverse=True)
-                    
-                    response = f"⚔️ **ТОП-5 АВТО-контрпиков против {official_name}:**\n\n"
-                    for i, counter in enumerate(valid_matchups[:5], 1):
-                        name = id_to_name.get(counter['id'], f"Hero ID {counter['id']}")
-                        wr = round(counter['winrate'], 1)
-                        response += f"{i}. **{name}** — винрейт прямо сейчас: `{wr}%` 📈\n"
-                    
-                    response += f"\n_Данные обновлены автоматически из базы последних матчей патча._"
-                    await status_msg.edit_text(response, parse_mode="Markdown", reply_markup=get_main_menu())
-                else:
-                    await status_msg.edit_text("⚠️ Ошибка сервера OpenDota. Нажми кнопку еще раз через 5 секунд.", reply_markup=get_main_menu())
-        except Exception as e:
-            logging.error(f"Ошибка авто-режима: {e}")
-            await status_msg.edit_text("⚠️ Ошибка сети при запросе к серверу матчей.", reply_markup=get_main_menu())
+            await message_or_call.message.edit_text(text, parse_mode="Markdown", reply_markup=get_main_menu())
 
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
     await message.answer(
-        "🚀 **Автоматический Dota 2 Бот готов!**\n\n"
-        "Выбери категорию кнопками ниже или напиши имя популярного героя с клавиатуры (на русском/английском):",
+        "🔮 **Dota 2 Контр-пикер готов к работе!**\n\n"
+        "Выбери категорию кнопками ниже или напиши имя вражеского героя с клавиатуры:",
         reply_markup=get_main_menu()
     )
 
 @dp.callback_query(F.data.startswith("role_"))
 async def handle_menus(call: CallbackQuery):
     role = call.data.split("_")[1]
-    await call.message.edit_text("🎯 Выбери вражеского героя из списка популярных:", reply_markup=get_heroes_keyboard(role))
+    await call.message.edit_text("🎯 Выбери вражеского героя из списка:", reply_markup=get_heroes_keyboard(role))
     await call.answer()
 
 @dp.callback_query(F.data == "back_to_menu")
 async def handle_back(call: CallbackQuery):
-    await call.message.edit_text("Выбери роль кнопками или введи имя героя вручную с клавиатуры:", reply_markup=get_main_menu())
+    await call.message.edit_text("Выбери категорию кнопками ниже или напиши имя вражеского героя с клавиатуры:", reply_markup=get_main_menu())
     await call.answer()
 
 @dp.callback_query(F.data.startswith("hero_"))
 async def handle_hero_click(call: CallbackQuery):
     hero_key = call.data.replace("hero_", "")
-    await get_auto_counters(call, hero_key)
+    await call.answer()
+    await process_counter_search(call, hero_key)
 
 @dp.message()
 async def check_hero_text(message: Message):
-    user_input = message.text.strip().lower()
-    await get_auto_counters(message, user_input)
+    await process_counter_search(message, message.text)
 
 async def start_bot():
     logging.basicConfig(level=logging.INFO)
