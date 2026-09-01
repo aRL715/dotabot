@@ -67,7 +67,7 @@ async def load_all_heroes_into_memory():
             logging.error(f"Ошибка загрузки базы: {e}")
 
 async def get_live_counters(hero_id: int):
-    url = f"https://opendota.com{hero_id}/matchups"
+    url = f"https://opendota.com/{hero_id}/matchups"
     async with aiohttp.ClientSession() as session:
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
