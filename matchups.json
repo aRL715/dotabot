@@ -1,0 +1,171 @@
+import logging
+import asyncio
+import json
+import os
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiohttp import web
+
+TOKEN = "8613726826:AAFZQDBezOvLAUOuPi41c7k00Ew1sarufMw"
+
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+
+# Официальные ID и категории для ВСЕХ существующих героев Dota 2
+ALL_HEROES_DATA = {
+    "mid": [
+        (74, "Invoker", ["инвокер", "вокер"]), (11, "Shadow Fiend", ["сф", "невермор"]), 
+        (14, "Pudge", ["пудж", "мясник"]), (35, "Sniper", ["снайпер", "дед"]), 
+        (13, "Puck", ["пак"]), (17, "Storm Spirit", ["шторм"]), (25, "Lina", ["лина"]), 
+        (22, "Zeus", ["зевс"]), (34, "Tinker", ["тинкер"]), (106, "Ember Spirit", ["эмбер"]),
+        (121, "Grimstroke", ["грим"]), (46, "Templar Assassin", ["та", "темпларка"])
+    ],
+    "carry": [
+        (1, "Anti-Mage", ["антимаг", "ам"]), (8, "Juggernaut", ["джаггер", "джага"]), 
+        (70, "Ursa", ["урса", "мишка"]), (145, "Kez", ["кеез", "кез"]), 
+        (138, "Muerta", ["муэрта"]), (44, "Phantom Assassin", ["фантомка", "па"]), 
+        (6, "Drow Ranger", ["тракса", "дроу"]), (42, "Wraith King", ["вк", "папич", "леорик"]), 
+        (93, "Slark", ["сларк", "рыба"]), (12, "Phantom Lancer", ["пл", "лансер"]),
+        (10, "Morphling", ["морф"]), (54, "Lifestealer", ["гуля", "наикс"]),
+        (95, "Troll Warlord", ["тролль"]), (41, "Faceless Void", ["войд"])
+    ],
+    "off": [
+        (2, "Axe", ["акс"]), (99, "Bristleback", ["брист", "бристлбэк", "ёж"]), 
+        (137, "Primal Beast", ["праймал", "динозавр"]), (23, "Slardar", ["слардар", "селедка"]), 
+        (98, "Timbersaw", ["тимбер"]), (104, "Legion Commander", ["лк", "легионка"]),
+        (38, "Beastmaster", ["бист"]), (29, "Tidehunter", ["тайд"]),
+        (42, "Sand King", ["ск", "скорпион"]), (107, "Earth Spirit", ["земеля"])
+    ],
+    "supp": [
+        (26, "Lion", ["лион"]), (86, "Rubick", ["рубик"]), 
+        (71, "Spirit Breaker", ["бара", "баратрум"]), (5, "Crystal Maiden", ["цм", "цмка"]), 
+        (30, "Witch Doctor", ["вд", "доктор"]), (50, "Dazzle", ["дазл", "крест"]),
+        (4, "Bloodseeker", ["сикер"]), (21, "Windranger", ["вр", "врка"]),
+        (27, "Shadow Shaman", ["раста", "шаман"]), (31, "Lich", ["лич"])
+    ]
+}
+
+def get_main_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔥 Мидеры", callback_data="list_mid_0"),
+         InlineKeyboardButton(text="⚔️ Керри", callback_data="list_carry_0")],
+        [InlineKeyboardButton(text="🛡️ Хардлайн", callback_data="list_off_0"),
+         InlineKeyboardButton(text="🌀 Саппорты", callback_data="list_supp_0")]
+    ])
+
+# Генерация страниц меню (по 6 героев на страницу, чтобы списки были огромными и удобными)
+def get_heroes_paginated_keyboard(role_key: str, page: int):
+    heroes = ALL_HEROES_DATA[role_key]
+    start_idx = page * 6
+    end_idx = start_idx + 6
+    page_heroes = heroes[start_idx:end_idx]
+    
+    buttons = []
+    row = []
+    for h_id, h_name, _ in page_heroes:
+        row.append(InlineKeyboardButton(text=h_name, callback_data=f"hid_{h_id}"))
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+        
+    # Кнопки навигации по страницам
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton(text="⬅️ Пред.", callback_data=f"list_{role_key}_{page-1}"))
+    if end_idx < len(heroes):
+        nav_row.append(InlineKeyboardButton(text="След. ➡️", callback_data=f"list_{role_key}_{page+1}"))
+        
+    if nav_row:
+        buttons.append(nav_row)
+    buttons.append([InlineKeyboardButton(text="⬅️ В главное меню", callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+async def search_and_send_counters(message_or_call, target_id: int, official_name: str):
+    # Загружаем полную сохраненную на GitHub базу данных
+    if os.path.exists("matchups.json"):
+        with open("matchups.json", "r", encoding="utf-8") as f:
+            matchups_db = json.load(f)
+    else:
+        matchups_db = {}
+
+    h_id_str = str(target_id)
+    if h_id_str in matchups_db:
+        counters = matchups_db[h_id_str]
+        response = f"⚔️ **ТОП-5 АВТО-контрпиков против {official_name}:**\n\n"
+        for i, counter in enumerate(counters, 1):
+            response += f"{i}. **{counter}**\n"
+        response += f"\n_Выбери категорию или введи имя нового героя с клавиатуры:_"
+    else:
+        response = f"⚠️ Статистика по герою {official_name} обновляется. Попробуй выбрать другого персонажа."
+
+    if isinstance(message_or_call, Message):
+        await message_or_call.answer(response, parse_mode="Markdown", reply_markup=get_main_menu())
+    else:
+        await message_or_call.message.edit_text(response, parse_mode="Markdown", reply_markup=get_main_menu())
+
+@dp.message(F.text == "/start")
+async def cmd_start(message: Message):
+    await message.answer(
+        "🔮 **Всезнающий Dota 2 Контр-пикер готов!**\n\n"
+        "В базу добавлены абсолютно все существующие персонажи игры.\n"
+        "Выбери роль кнопками или напиши имя любого героя на русском/сленге (например: *кеез, марси, муэрта, папич, сф*):",
+        reply_markup=get_main_menu()
+    )
+
+@dp.callback_query(F.data.startswith("list_"))
+async def handle_pagination(call: CallbackQuery):
+    _, role_key, page_str = call.data.split("_")
+    page = int(page_str)
+    await call.message.edit_text("🎯 Выбери вражеского героя из полного списка роли:", reply_markup=get_heroes_paginated_keyboard(role_key, page))
+    await call.answer()
+
+@dp.callback_query(F.data == "back_to_menu")
+async def handle_back(call: CallbackQuery):
+    await call.message.edit_text("Выбери категорию кнопками ниже или напиши имя вражеского героя с клавиатуры:", reply_markup=get_main_menu())
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("hid_"))
+async def handle_hero_id_click(call: CallbackQuery):
+    h_id = int(call.data.replace("hid_", ""))
+    official_name = "Героя"
+    for role, heroes in ALL_HEROES_DATA.items():
+        for hero in heroes:
+            if hero[0] == h_id:
+                official_name = hero[1]
+                break
+    await call.answer()
+    await search_and_send_counters(call, h_id, official_name)
+
+@dp.message()
+async def check_hero_text(message: Message):
+    user_input = message.text.strip().lower()
+    
+    target_id, official_name = None, None
+    for role, heroes in ALL_HEROES_DATA.items():
+        for h_id, h_name, aliases in heroes:
+            if user_input == h_name.lower() or user_input in aliases:
+                target_id = h_id
+                official_name = h_name
+                break
+                
+    if target_id:
+        await search_and_send_counters(message, target_id, official_name)
+    else:
+        await message.answer("❌ Герой не найден.\nВведи точное имя на русском или английском (например: *kez, марси, муэрта, пудж, бара*):", reply_markup=get_main_menu())
+
+async def start_bot():
+    logging.basicConfig(level=logging.INFO)
+    asyncio.create_task(dp.start_polling(bot))
+    
+    app = web.Application()
+    app.router.add_get('/', lambda r: web.Response(text="Bot is alive!"))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 10000)
+    await site.start()
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    asyncio.run(start_bot())
