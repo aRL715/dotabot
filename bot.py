@@ -1,19 +1,14 @@
 import logging
 import asyncio
+import aiohttp
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from aiogram.fsm.storage.memory import MemoryStorage
 from aiohttp import web
-from aiogram.webhook.aiohttp_handler import SimpleRequestHandler, setup_application
 
 TOKEN = "8613726826:AAFZQDBezOvLAUOuPi41c7k00Ew1sarufMw"
-# Официальный веб-адрес твоего сервера на Render (взят из твоих прошлых логов)
-WEBHOOK_HOST = "https://onrender.com"
-WEBHOOK_PATH = f"/webhook/{TOKEN}"
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
+dp = Dispatcher()
 
 def get_main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -108,21 +103,24 @@ async def handle_fast_click(call: CallbackQuery):
 async def check_hero_text(message: Message):
     await find_and_get_counters(message, message.text)
 
-# Логика запуска профессионального вебхука для Render
-async def on_startup(bot: Bot) -> None:
-    await bot.set_webhook(WEBHOOK_URL)
-
-def main():
+# Функция для запуска фонового опроса Telegram параллельно с веб-сервером
+async def start_bot():
     logging.basicConfig(level=logging.INFO)
-    dp.startup.register(on_startup)
     
+    # Запускаем фоновую задачу опроса обновлений Telegram
+    asyncio.create_task(dp.start_polling(bot))
+    
+    # Создаем простейший веб-сервер, который просто висит на порту 10000 для Render
     app = web.Application()
-    webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
-    webhook_requests_handler.register(app, path=WEBHOOK_PATH)
-    setup_application(app, dp, bot=bot)
+    app.router.add_get('/', lambda r: web.Response(text="Bot is alive!"))
     
-    # Режим Вебхука автоматически слушает порт 10000, который требует Render
-    web.run_app(app, host="0.0.0.0", port=10000)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 10000)
+    await site.start()
+    
+    # Удерживаем сервер запущенным бесконечно
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(start_bot())
