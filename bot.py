@@ -1,11 +1,11 @@
 import logging
 import asyncio
 import aiohttp
+from aiohttp import ClientSession, web
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from aiohttp import web
 
-TOKEN = "8613726826:AAFZQDBEzOvLAUOuPi4lc7k0OeWlsarufMw"
+TOKEN = "8613726826:AAFZQDBezOvLAUOuPi41c7k00Ew1sarufMw"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -19,18 +19,20 @@ def get_main_menu():
         ]
     ])
 
+# Единая надежная функция авто-поиска контрпиков по локальной базе данных матчей
 async def find_and_get_counters(message: Message, user_input: str):
     search_name = user_input.strip().lower().replace(" ", "_").replace("-", "")
     status_msg = await message.answer(f"⚡ Авто-запрос к статистике против **{user_input}**...")
     
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    async with aiohttp.ClientSession() as session:
+    async with ClientSession(headers=headers) as session:
         try:
-            async with session.get("https://opendota.com", headers=headers) as response:
+            # Используем стабильное официальное хранилище Valve для поиска ID всех 125+ героев
+            async with session.get("https://githubusercontent.com") as response:
                 if response.status != 200:
-                    await status_msg.edit_text("⚠️ Ошибка сервера статистики OpenDota. Попробуй позже.")
+                    await status_msg.edit_text("⚠️ Ошибка сервера Valve. Попробуй позже.")
                     return
-                heroes = await response.json()
+                heroes_data = await response.json()
             
             hero_id = None
             official_name = ""
@@ -46,29 +48,30 @@ async def find_and_get_counters(message: Message, user_input: str):
             if search_name in slang:
                 search_name = slang[search_name]
 
-            for hero in heroes:
-                sys_name = hero['name'].replace("npc_dota_hero_", "").lower().replace("_", "").replace("-", "")
-                loc_name = hero['localized_name'].lower().replace(" ", "").replace("-", "")
+            for h_id_str, h_info in heroes_data.items():
+                sys_name = h_info['name'].replace("npc_dota_hero_", "").lower().replace("_", "").replace("-", "")
+                loc_name = h_info['localized_name'].lower().replace(" ", "").replace("-", "")
                 if search_name == sys_name or search_name == loc_name:
-                    hero_id = hero['id']
-                    official_name = hero['localized_name']
+                    hero_id = int(h_id_str)
+                    official_name = h_info['localized_name']
                     break
             
             if not hero_id:
                 await status_msg.edit_text("❌ Герой не найден.\nВведи имя на русском или английском (например: *pudge, marci, kez, сф, бара*):")
                 return
 
-            url = f"https://opendota.com/{hero_id}/matchups"
-            async with session.get(url, headers=headers) as match_response:
+            # Запрашиваем живые матчапы текущего патча
+            url = f"https://opendota.com{hero_id}/matchups"
+            async with session.get(url) as match_response:
                 if match_response.status == 200:
                     matchups = await match_response.json()
-                    hero_names = {h['id']: h['localized_name'] for h in heroes}
+                    hero_names = {int(k): v['localized_name'] for k, v in heroes_data.items()}
                     
                     valid_matchups = []
                     for m in matchups:
                         if m['games_played'] > 5:
                             winrate = (m['wins'] / m['games_played']) * 100
-                            valid_matchups.append({'id': m['hero_id'], 'winrate': winrate})
+                            valid_matchups.append({'id': int(m['hero_id']), 'winrate': winrate})
                     
                     valid_matchups.sort(key=lambda x: x['winrate'], reverse=True)
                     
@@ -83,7 +86,8 @@ async def find_and_get_counters(message: Message, user_input: str):
                 else:
                     await status_msg.edit_text("⚠️ Не удалось загрузить матчапы персонажа.")
         except Exception as e:
-            await status_msg.edit_text("⚠️ Ошибка подключения к сети.")
+            logging.error(f"Критическая ошибка: {e}")
+            await status_msg.edit_text("⚠️ Ошибка подключения к серверу статистики.")
 
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
@@ -103,23 +107,16 @@ async def handle_fast_click(call: CallbackQuery):
 async def check_hero_text(message: Message):
     await find_and_get_counters(message, message.text)
 
-# Функция для запуска фонового опроса Telegram параллельно с веб-сервером
 async def start_bot():
     logging.basicConfig(level=logging.INFO)
-    
-    # Запускаем фоновую задачу опроса обновлений Telegram
     asyncio.create_task(dp.start_polling(bot))
     
-    # Создаем простейший веб-сервер, который просто висит на порту 10000 для Render
     app = web.Application()
     app.router.add_get('/', lambda r: web.Response(text="Bot is alive!"))
-    
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', 10000)
     await site.start()
-    
-    # Удерживаем сервер запущенным бесконечно
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
