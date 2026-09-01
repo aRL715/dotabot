@@ -103,6 +103,17 @@ async def check_hero_text(message: Message):
 
 async def main():
     logging.basicConfig(level=logging.INFO)
+    
+    # Создаем встроенный веб-сервер, чтобы Render видел открытый порт
+    from aiohttp import web
+    app = web.Application()
+    app.router.add_get('/', lambda r: web.Response(text="Bot is alive!"))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 10000)
+    asyncio.create_task(site.start())
+    
+    # Запускаем чтение сообщений из Телеграма
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
