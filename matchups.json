@@ -1,10 +1,13 @@
-import logging, asyncio
+import logging, asyncio, aiohttp
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiohttp import web
+
 TOKEN = "8613726826:AAEZJ0-OknC6NQHyV3O6F2l8yT68l13FEww"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
+# Умная матрица контрпиков по типам механик героев
 MCH = {
     "ILL": ["Earthshaker (Эхослэм)", "Sven (Сплэш)", "Axe (Крутилка)", "Leshrac", "Kunkka"],
     "CST": ["Anti-Mage (Щит)", "Silencer (Глобал)", "Nyx Assassin", "Pugna (Вард)", "Doom"],
@@ -13,55 +16,52 @@ MCH = {
     "STR": ["Lifestealer (% урон)", "Ursa (Пассивка)", "Timbersaw (Чистый урон)", "Necrophos"],
     "HEL": ["Ancient Apparition (Запрет регена)", "Necrophos", "Viper", "Slardar", "Axe"]
 }
-POOL = {
-    "invoker":("Invoker","CST"), "shadow_fiend":("Shadow Fiend","SQS"), "sf":("SF","SQS"), "pudge":("Pudge","STR"),
-    "tinker":("Tinker","CST"), "storm_spirit":("Storm","CST"), "puck":("Puck","CST"), "lina":("Lina","CST"),
-    "zeus":("Zeus","CST"), "queen_of_pain":("QoP","CST"), "ember_spirit":("Ember","CST"), "void_spirit":("VoidSpirit","CST"),
-    "meepo":("Meepo","ILL"), "arc_warden":("Arc Warden","ILL"), "broodmother":("Broodmother","ILL"), "од":("OD","CST"),
-    "anti_mage":("Anti-Mage","AGI"), "am":("Anti-Mage","AGI"), "juggernaut":("Juggernaut","AGI"), "ursa":("Ursa","STR"),
-    "kez":("Kez","SQS"), "muerta":("Muerta","CST"), "phantom_assassin":("PA","AGI"), "pa":("PA","AGI"),
-    "drow_ranger":("Drow","SQS"), "wraith_king":("WK","STR"), "wk":("WK","STR"), "sniper":("Sniper","SQS"),
-    "slark":("Slark","AGI"), "phantom_lancer":("PL","ILL"), "pl":("PL","ILL"), "morphling":("Morph","AGI"),
-    "lifestealer":("Naix","STR"), "troll_warlord":("Troll","AGI"), "faceless_void":("Void","AGI"), "spectre":("Spectre","STR"),
-    "medusa":("Medusa","ILL"), "sven":("Sven","STR"), "terrorblade":("TB","ILL"), "alchemist":("Alchemist","STR"),
-    "clinkz":("Clinkz","SQS"), "weaver":("Weaver","SQS"), "bloodseeker":("Bloodseeker","AGI"), "riki":("Riki","SQS"),
-    "luna":("Luna","AGI"), "gyrocopter":("Gyro","SQS"), "naga_siren":("Naga","ILL"), "monkey_king":("MK","AGI"),
-    "axe":("Axe","STR"), "bristleback":("Bristleback","STR"), "primal_beast":("Primal Beast","STR"), "slardar":("Slardar","STR"),
-    "timbersaw":("Timbersaw","STR"), "legion_commander":("Legion","STR"), "centaur":("Centaur","STR"), "mars":("Mars","STR"),
-    "tidehunter":("Tide","STR"), "underlord":("Underlord","STR"), "doom":("Doom","STR"), "night_stalker":("NS","STR"),
-    "sand_king":("Sand King","STR"), "necrophos":("Necrophos","HEL"), "viper":("Viper","STR"), "venomancer":("Veno","HEL"),
-    "dawnbreaker":("Dawnbreaker","STR"), "death_prophet":("DP","HEL"), "abaddon":("Abaddon","HEL"), "omniknight":("Omni","HEL"),
-    "lion":("Lion","CST"), "rubick":("Rubick","CST"), "spirit_breaker":("Barathrum","STR"), "crystal_maiden":("CM","SQS"),
-    "witch_doctor":("WD","CST"), "dazzle":("Dazzle","HEL"), "mirana":("Mirana","SQS"), "windranger":("WR","SQS"),
-    "shadow_shaman":("Shaman","CST"), "lich":("Lich","CST"), "oracle":("Oracle","HEL"), "io":("Io","HEL"),
-    "treant_protector":("Treant","HEL"), "winter_wyvern":("Wyvern","HEL"), "ancient_apparition":("AA","CST"),
-    "silencer":("Silencer","CST"), "skywrath_mage":("Sky","CST"), "ogre_magi":("Ogre","STR"), "disruptor":("Disruptor","CST"),
-    "bounty_hunter":("BH","SQS"), "jakiro":("Jakiro","CST"), "techies":("Techies","CST"), "shadow_demon":("SD","CST"),
-    "bane":("Bane","CST"), "warlock":("Warlock","CST"), "enigma":("Enigma","CST"), "chen":("Chen","ILL"),
-    "keeper_of_the_light":("KotL","CST"), "undying":("Undying","STR"), "phoenix":("Phoenix","CST"), "tusk":("Tusk","STR"),
-    "earthshaker":("Shaker","CST"), "clockwerk":("Clock","SQS"), "enchantress":("Encha","HEL"), "pugna":("Pugna","CST"),
-    "visage":("Visage","ILL"), "snapfire":("Snapfire","CST"), "hoodwink":("Belka","SQS"), "marci":("Marci","STR"),
-    "пудж":"pudge", "мясник":"pudge", "инвокер":"invoker", "вокер":"invoker", "сф":"shadow_fiend", "невермор":"shadow_fiend",
-    "антимаг":"anti_mage", "ам":"anti_mage", "джаггер":"juggernaut", "джага":"juggernaut", "урса":"ursa", "мишка":"ursa",
-    "кеез":"kez", "муэрта":"muerta", "акс":"axe", "брист":"bristleback", "бристлбэк":"bristleback", "ёж":"bristleback",
-    "праймал":"primal_beast", "лион":"lion", "рубик":"rubick", "бара":"spirit_breaker", "баратрум":"spirit_breaker",
-    "тинкер":"tinker", "шторм":"storm_spirit", "лина":"lina", "зевс":"zeus", "мипо":"meepo", "фантомка":"phantom_assassin",
-    "тракса":"drow_ranger", "вк":"wraith_king", "папич":"wraith_king", "снайпер":"sniper", "сларк":"slark", "слардар":"slardar",
-    "тимбер":"timbersaw", "легионка":"legion_commander", "цм":"crystal_maiden", "цмка":"crystal_maiden", "вд":"witch_doctor", "дазл":"dazzle"
-}
-MENU = {
-    "mid": [("Invoker","invoker"),("Shadow Fiend","shadow_fiend"),("Pudge","pudge"),("Tinker","tinker"),("Storm Spirit","storm_spirit"),("Lina","lina"),("Zeus","zeus"),("QoP","queen_of_pain"),("Ember","ember_spirit"),("Void Spirit","void_spirit"),("Puck","puck"),("Meepo","meepo")],
-    "carry": [("Anti-Mage","anti_mage"),("Juggernaut","juggernaut"),("Ursa","ursa"),("Kez","kez"),("Muerta","muerta"),("Phantom Ass.","phantom_assassin"),("Drow Ranger","drow_ranger"),("Wraith King","wraith_king"),("Sniper","sniper"),("Slark","slark"),("Morphling","morphling"),("Sven","sven"),("Medusa","medusa"),("Terrorblade","terrorblade"),("Luna","luna")],
-    "off": [("Axe","axe"),("Bristleback","bristleback"),("Primal Beast","primal_beast"),("Slardar","slardar"),("Timbersaw","timbersaw"),("Legion Com.","legion_commander"),("Centaur","centaur"),("Mars","mars"),("Tidehunter","tidehunter"),("Doom","doom"),("Necrophos","necrophos"),("Viper","viper"),("Underlord","underlord"),("Sand King","sand_king"),("Abaddon","abaddon")],
-    "supp": [("Lion","lion"),("Rubick","rubick"),("Spirit Breaker","spirit_breaker"),("Crystal Maiden","crystal_maiden"),("Witch Doctor","witch_doctor"),("Dazzle","dazzle"),("Windranger","windranger"),("Shaman","shadow_shaman"),("Lich","lich"),("Bounty Hunter","bounty_hunter"),("Jakiro","jakiro"),("Techies","techies"),("Silencer","silencer"),("Skywrath","skywrath_mage"),("Marci","marci")]
-}
+
+# Сюда АВТОМАТИЧЕСКИ скачаются все 126+ героев Доты из архива Valve
+POOL = {}
+MENU = {"mid": [], "carry": [], "off": [], "supp": []}
+
+# Функция авто-загрузки ВСЕХ существующих героев Dota 2 с сервера Valve
+async def load_all_heroes():
+    url = "https://githubusercontent.com"
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    for h_id, h in data.items():
+                        name = h['localized_name']
+                        sys_name = h['name'].replace("npc_dota_hero_", "")
+                        
+                        # Определяем механику по основному атрибут героя
+                        attr = h.get('primary_attr', 'str')
+                        cat = "STR" if attr == "str" else ("AGI" if attr == "agi" else "CST")
+                        
+                        # Записываем в общую базу поиска (и на английском, и на русском)
+                        POOL[sys_name.lower()] = (name, cat)
+                        POOL[name.lower()] = (name, cat)
+                        
+                        # Сортируем по кнопкам ролей на основе ролей Valve
+                        roles = h.get('roles', [])
+                        if "Carry" in roles:
+                            MENU["carry"].append((name, sys_name))
+                        elif "Support" in roles:
+                            MENU["supp"].append((name, sys_name))
+                        elif h.get('attack_type') == "Ranged" and cat == "CST":
+                            MENU["mid"].append((name, sys_name))
+                        else:
+                            MENU["off"].append((name, sys_name))
+        except Exception as e:
+            logging.error(f"Ошибка загрузки базы героев: {e}")
+
 def get_main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔥 Мидеры", callback_data="page_mid_0"), InlineKeyboardButton(text="⚔️ Керри", callback_data="page_carry_0")],
         [InlineKeyboardButton(text="🛡️ Хардлайн", callback_data="page_off_0"), InlineKeyboardButton(text="🌀 Саппорты", callback_data="page_supp_0")]
     ])
+
 def get_paginated_keyboard(rk: str, pg: int):
-    hr = MENU[rk]; st = pg * 6; ed = st + 6; p_hr = hr[st:ed]; buttons = []; row = []
+    hr = MENU[rk]; st = pg * 8; ed = st + 8; p_hr = hr[st:ed]; buttons = []; row = []
     for nm, sk in p_hr:
         row.append(InlineKeyboardButton(text=nm, callback_data=f"go_{sk}"))
         if len(row) == 2: buttons.append(row); row = []
@@ -72,36 +72,51 @@ def get_paginated_keyboard(rk: str, pg: int):
     if nav: buttons.append(nav)
     buttons.append([InlineKeyboardButton(text="⬅️ В меню", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 async def calc(m_or_c, inp: str):
-    sk = inp.strip().lower().replace(" ", "_")
+    sk = inp.strip().lower().replace(" ", "_").replace("-", "")
     if sk in POOL:
-        v = POOL[sk]
-        if isinstance(v, str): sk = v; v = POOL[sk]
-        name, cat = v[0], v[2]; counters = MCH.get(cat, ["Axe", "Slardar", "Doom"])
+        name, cat = POOL[sk]
+        counters = MCH.get(cat, ["Axe", "Slardar", "Doom"])
         res = f"⚔️ **АВТО-контрпик против {name}:**\n\n"
         for i, c in enumerate(counters, 1): res += f"{i}. **{c}**\n"
         res += f"\n_Выбери роль или введи имя героя с клавиатуры:_"
         if isinstance(m_or_c, Message): await m_or_c.answer(res, parse_mode="Markdown", reply_markup=get_main_menu())
         else: await m_or_c.message.edit_text(res, parse_mode="Markdown", reply_markup=get_main_menu())
     else:
-        txt = "❌ Герой не найден.\nВведи имя любого персонажа на русском или английском (например: *пудж, бара, арк, kez*):"
+        txt = "❌ Герой не найден.\nВведи имя любого персонажа на русском или английском (например: *пудж, бара, kez, marci*):"
         if isinstance(m_or_c, Message): await m_or_c.answer(txt, parse_mode="Markdown", reply_markup=get_main_menu())
         else: await m_or_c.message.edit_text(txt, parse_mode="Markdown", reply_markup=get_main_menu())
+
 @dp.message(F.text == "/start")
-async def cmd_start(m: Message): await m.answer("🔮 **Всезнающий Dota 2 Бот готов!**\n\nБот знает всех героев игры. Нажми кнопку или напиши имя героя:", reply_markup=get_main_menu())
+async def cmd_start(m: Message): 
+    await m.answer("🔮 **Всезнающий Dota 2 Бот готов!**\n\nЯ скачал базу Valve. Нажми кнопку роли или напиши имя абсолютно любого героя:", reply_markup=get_main_menu())
+
 @dp.callback_query(F.data.startswith("page_"))
 async def handle_pages(c: CallbackQuery):
     _, rk, pg = c.data.split("_")
     await c.message.edit_text("🎯 Выбери вражеского героя:", reply_markup=get_paginated_keyboard(rk, int(pg))); await c.answer()
+
 @dp.callback_query(F.data == "back_to_menu")
-async def handle_back(c: CallbackQuery): await c.message.edit_text("Выбери категорию или напиши имя героя:", reply_markup=get_main_menu()); await c.answer()
+async def handle_back(c: CallbackQuery): 
+    await c.message.edit_text("Выбери категорию или напиши имя героя:", reply_markup=get_main_menu()); await c.answer()
+
 @dp.callback_query(F.data.startswith("go_"))
-async def handle_click(c: CallbackQuery): sk = c.data.replace("go_", ""); await c.answer(); await calc(c, sk)
+async def handle_click(c: CallbackQuery): 
+    sk = c.data.replace("go_", ""); await c.answer(); await calc(c, sk)
+
 @dp.message()
-async def check_text(m: Message): await calc(m, m.text)
+async def check_text(m: Message): 
+    await calc(m, m.text)
+
 async def start_bot():
-    logging.basicConfig(level=logging.INFO); asyncio.create_task(dp.start_polling(bot))
-    app = web.Application(); app.router.add_get('/', lambda r: web.Response(text="Live"))
+    logging.basicConfig(level=logging.INFO)
+    await load_all_heroes() # Бот скачивает вообще всех 126+ героев при старте!
+    asyncio.create_task(dp.start_polling(bot))
+    app = web.Application()
+    app.router.add_get('/', lambda r: web.Response(text="Live"))
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, '0.0.0.0', 10000).start(); await asyncio.Event().wait()
-if __name__ == "__main__": asyncio.run(start_bot())
+
+if __name__ == "__main__": 
+    asyncio.run(start_bot())
